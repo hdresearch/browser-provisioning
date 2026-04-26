@@ -29,7 +29,7 @@ fn vers_wait(vm_id: &str) {
 
 #[tokio::main]
 async fn main() {
-    let client = Client::new("");
+    let client = Client::new("https://api.vers.sh");
     let active: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
     // Ctrl-C cleanup
@@ -61,11 +61,11 @@ async fn main() {
 
         println!("[2/4] Waiting for VM..."); vers_wait(&build_vm);
         println!("[3/4] Installing Chromium...");
-        vers_exec(&build_vm, include_str!("../install.sh"), 600);
+        vers_exec(&build_vm, include_str!("../../install.sh"), 600);
 
         println!("[4/4] Committing...");
         let cr = client.commit_vm(&build_vm, &serde_json::json!({}), None, None).await?;
-        let commit_id = cr["commit_id"].as_str().ok_or("no commit_id")?.to_string();
+        let commit_id = cr.commit_id.clone();
         println!("  Commit: {commit_id}");
         client.delete_vm(&build_vm, None, None).await?;
         active.lock().unwrap().retain(|v| v != &build_vm);
@@ -80,7 +80,7 @@ async fn main() {
 
         println!("[2/3] Waiting for VM..."); vers_wait(&vm_id);
         println!("[3/3] Starting Chrome & scraping inside VM...\n");
-        let out = vers_exec(&vm_id, include_str!("../scrape.sh"), 120);
+        let out = vers_exec(&vm_id, include_str!("../../scrape.sh"), 120);
 
         for line in out.trim().lines() {
             if line.starts_with('{') {

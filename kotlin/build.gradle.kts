@@ -9,10 +9,11 @@ application {
 
 repositories {
     mavenCentral()
+    maven { url = uri("https://jitpack.io") }
 }
 
 dependencies {
-    implementation("com.vers.sdk:vers-sdk:0.1.7")
+    implementation("com.github.hdresearch:kotlin-sdk:main-SNAPSHOT")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
 }
