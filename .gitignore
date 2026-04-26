@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.venv/
+vendor/
+target/
+bin/
+obj/
+
+# Build artifacts
+typescript/dist/
+rust/target/
+go/go.sum
+java/target/
+kotlin/.gradle/
+kotlin/build/
+csharp/bin/
+csharp/obj/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Package locks (keep package manifests, ignore lockfiles)
+typescript/package-lock.json
+python/*.egg-info/
+ruby/Gemfile.lock
+php/composer.lock
+
+# Screenshots / temp
+*.png
+golden-commit-id.txt

@@ -1,0 +1,10 @@
+{
+    "name": "vers/browser-provisioning-php",
+    "type": "project",
+    "require": {
+        "php": "^8.2",
+        "vers/vers-sdk": "^0.1.7",
+        "chrome-php/chrome": "^1.10",
+        "phpseclib/phpseclib": "^3.0"
+    }
+}
