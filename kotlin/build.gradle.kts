@@ -14,6 +14,6 @@ repositories {
 
 dependencies {
     // Use the Java SDK (installed to mavenLocal from sterling/generated/java)
-    implementation("com.vers:vers-sdk:0.1.7")
+    implementation("com.vers:vers-sdk:0.1.8")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
 }

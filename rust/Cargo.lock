@@ -1530,7 +1530,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "vers-sdk"
 version = "0.1.8"
-source = "git+https://github.com/hdresearch/rust-sdk#08b8e43b5f124c53344b90723c2b8a7f201edaac"
+source = "git+https://github.com/hdresearch/rust-sdk#501035dbc53d8fb4ef5fd8f5d1607e0d6b97a3eb"
 dependencies = [
  "log",
  "reqwest 0.11.27",

@@ -5,9 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -40,16 +38,6 @@ func (t *vmTracker) cleanup() {
 		fmt.Fprintf(os.Stderr, "[cleanup] Deleting VM %s...\n", id)
 		t.client.DeleteVm(id, nil)
 	}
-}
-
-// readJSON reads an http.Response body into a map
-func readJSON(resp *http.Response) (map[string]interface{}, error) {
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil { return nil, err }
-	var result map[string]interface{}
-	err = json.Unmarshal(body, &result)
-	return result, err
 }
 
 func versExec(vmID, script string, timeout int) (string, error) {
@@ -121,9 +109,7 @@ func run(c *vers.Client, t *vmTracker) error {
 			"kernel_name": "default.bin", "image_name": "default"}},
 		&vers.CreateNewRootVmParams{WaitBoot: &waitBoot})
 	if err != nil { return err }
-	root, err := readJSON(resp)
-	if err != nil { return err }
-	buildVM := root["vm_id"].(string)
+	buildVM := resp.VmId
 	t.add(buildVM)
 	fmt.Printf("  VM: %s\n", buildVM)
 
@@ -134,8 +120,7 @@ func run(c *vers.Client, t *vmTracker) error {
 	fmt.Println("[4/4] Committing...")
 	commitResp, err := c.CommitVm(buildVM, map[string]interface{}{}, nil)
 	if err != nil { return err }
-	cr, _ := readJSON(commitResp)
-	commitID := cr["commit_id"].(string)
+	commitID := commitResp.CommitId
 	fmt.Printf("  Commit: %s\n", commitID)
 	c.DeleteVm(buildVM, nil); t.remove(buildVM)
 	fmt.Println("  Build VM deleted\n")
@@ -144,9 +129,7 @@ func run(c *vers.Client, t *vmTracker) error {
 	fmt.Println("[1/3] Branching...")
 	branchResp, err := c.BranchByCommit(commitID, map[string]interface{}{}, nil)
 	if err != nil { return err }
-	br, _ := readJSON(branchResp)
-	vms := br["vms"].([]interface{})
-	vmID := vms[0].(map[string]interface{})["vm_id"].(string)
+	vmID := branchResp.Vms[0].VmId
 	t.add(vmID)
 	fmt.Printf("  VM: %s\n", vmID)
 

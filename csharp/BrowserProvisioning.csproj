@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="vers-sdk" Version="0.1.7" />
+    <PackageReference Include="vers-sdk" Version="0.1.8" />
   </ItemGroup>
 </Project>

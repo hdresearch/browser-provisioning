@@ -9,12 +9,6 @@ using VersSdk;
 var activeVms = new ConcurrentBag<string>();
 VersSdkClient? globalClient = null;
 
-async Task<JsonElement> ReadJson(HttpResponseMessage resp) {
-    var body = await resp.Content.ReadAsStringAsync();
-    resp.EnsureSuccessStatusCode();
-    return JsonDocument.Parse(body).RootElement;
-}
-
 void CleanupVms() {
     if (activeVms.IsEmpty || globalClient == null) return;
     foreach (var vm in activeVms) {
@@ -94,9 +88,9 @@ try {
     Console.WriteLine("=== [C#] Building golden image ===\n");
 
     Console.WriteLine("[1/4] Creating root VM...");
-    var root = await ReadJson(await client.CreateNewRootVmAsync(
+    var root = await client.CreateNewRootVmAsync(
         body: new { vm_config = new { vcpu_count = 2, mem_size_mib = 4096, fs_size_mib = 8192,
-            kernel_name = "default.bin", image_name = "default" } }));
+            kernel_name = "default.bin", image_name = "default" } });
     var buildVm = root.GetProperty("vm_id").GetString()!;
     activeVms.Add(buildVm);
     Console.WriteLine($"  VM: {buildVm}");
@@ -105,7 +99,7 @@ try {
     Console.WriteLine("[3/4] Installing Chromium..."); VersExec(buildVm, Install);
 
     Console.WriteLine("[4/4] Committing...");
-    var cr = await ReadJson(await client.CommitVmAsync(buildVm, body: new {}));
+    var cr = await client.CommitVmAsync(buildVm, body: new {});
     var commitId = cr.GetProperty("commit_id").GetString()!;
     Console.WriteLine($"  Commit: {commitId}");
     await client.DeleteVmAsync(buildVm);
@@ -114,7 +108,7 @@ try {
 
     Console.WriteLine("=== Branching from commit & scraping ===\n");
     Console.WriteLine("[1/3] Branching...");
-    var br = await ReadJson(await client.BranchByCommitAsync(commitId, body: new {}));
+    var br = await client.BranchByCommitAsync(commitId, body: new {});
     var vmId = br.GetProperty("vms")[0].GetProperty("vm_id").GetString()!;
     activeVms.Add(vmId);
     Console.WriteLine($"  VM: {vmId}");
