@@ -96,8 +96,7 @@ try {
     Console.WriteLine("[1/4] Creating root VM...");
     var root = await ReadJson(await client.CreateNewRootVmAsync(
         body: new { vm_config = new { vcpu_count = 2, mem_size_mib = 4096, fs_size_mib = 8192,
-            kernel_name = "default.bin", image_name = "default" } },
-        queryParams: new CreateNewRootVmParams { WaitBoot = true }));
+            kernel_name = "default.bin", image_name = "default" } }));
     var buildVm = root.GetProperty("vm_id").GetString()!;
     activeVms.Add(buildVm);
     Console.WriteLine($"  VM: {buildVm}");

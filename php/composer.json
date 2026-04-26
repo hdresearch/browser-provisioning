@@ -10,5 +10,10 @@
             "type": "path",
             "url": "../../sterling/generated/php"
         }
-    ]
+    ],
+    "autoload": {
+        "classmap": [
+            "vendor/vers/sdk/src/"
+        ]
+    }
 }

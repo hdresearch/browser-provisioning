@@ -7,7 +7,6 @@
 require_once __DIR__ . '/vendor/autoload.php';
 
 use VersSdk\VersSdkClient;
-use VersSdk\CreateNewRootVmParams;
 
 $activeVms = [];
 $client = null;
@@ -95,15 +94,14 @@ cd /app && node -e '
 BASH;
 
 try {
-    $client = new VersSdkClient();
+    $client = new VersSdkClient(apiKey: getenv('VERS_API_KEY') ?: null);
 
     echo "=== [PHP] Building golden image ===\n\n";
 
     echo "[1/4] Creating root VM...\n";
     $root = $client->createNewRootVm(
         body: ['vm_config' => ['vcpu_count' => 2, 'mem_size_mib' => 4096, 'fs_size_mib' => 8192,
-            'kernel_name' => 'default.bin', 'image_name' => 'default']],
-        params: new CreateNewRootVmParams(wait_boot: true)
+            'kernel_name' => 'default.bin', 'image_name' => 'default']]
     );
     $buildVm = $root['vm_id'];
     $activeVms[] = $buildVm;
