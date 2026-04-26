@@ -9,11 +9,11 @@ application {
 
 repositories {
     mavenCentral()
-    maven { url = uri("https://jitpack.io") }
+    mavenLocal()
 }
 
 dependencies {
-    implementation("com.github.hdresearch:kotlin-sdk:main-SNAPSHOT")
-    implementation("com.google.code.gson:gson:2.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    // Use the Java SDK (installed to mavenLocal from sterling/generated/java)
+    implementation("com.vers:vers-sdk:0.1.7")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
 }

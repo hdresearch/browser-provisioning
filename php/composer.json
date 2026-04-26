@@ -3,6 +3,12 @@
     "type": "project",
     "require": {
         "php": "^8.2",
-        "vers/vers-sdk": "^0.1.7"
-    }
+        "vers/sdk": "0.1.7"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../../sterling/generated/php"
+        }
+    ]
 }

@@ -1,10 +1,11 @@
 package com.vers.examples;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vers.sdk.Models;
 import com.vers.sdk.VersClient;
 
 import java.io.*;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -49,10 +50,10 @@ public class Main {
         set -e
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
-        apt-get install -y -qq -o Dpkg::Options::="--force-confdef" \
-            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-            libgbm1 libasound2t64 libpango-1.0-0 libcairo2 fonts-liberation \
+        apt-get install -y -qq -o Dpkg::Options::="--force-confdef" \\
+            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \\
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \\
+            libgbm1 libasound2t64 libpango-1.0-0 libcairo2 fonts-liberation \\
             xvfb nodejs npm curl ca-certificates
         apt-get remove -y chromium-browser 2>/dev/null || true
         mkdir -p /app && cd /app
@@ -87,15 +88,18 @@ public class Main {
         '
     """;
 
+    @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
         var client = new VersClient();
         globalClient = client;
+        var om = new ObjectMapper();
 
         try {
             System.out.println("=== [Java] Building golden image ===\n");
 
             System.out.println("[1/4] Creating root VM...");
-            var params = new Models.CreateNewRootVmParams(); params.waitBoot = true;
+            var params = new Models.CreateNewRootVmParams();
+            params.wait_boot = true;
             var root = client.createNewRootVm(
                 Map.of("vm_config", Map.of("vcpu_count", 2, "mem_size_mib", 4096, "fs_size_mib", 8192,
                     "kernel_name", "default.bin", "image_name", "default")), params, null);
@@ -116,7 +120,7 @@ public class Main {
             System.out.println("=== Branching from commit & scraping ===\n");
             System.out.println("[1/3] Branching...");
             var br = client.branchByCommit(commitId, Map.of(), null, null);
-            @SuppressWarnings("unchecked") var vms = (List<Map<String,Object>>) br.get("vms");
+            var vms = (List<Map<String,Object>>) br.get("vms");
             var vmId = (String) vms.get(0).get("vm_id");
             activeVms.add(vmId);
             System.out.printf("  VM: %s%n", vmId);
@@ -127,13 +131,12 @@ public class Main {
 
             for (var line : out.trim().split("\n")) {
                 if (line.startsWith("{")) {
-                    var parsed = com.google.gson.JsonParser.parseString(line).getAsJsonObject();
-                    System.out.printf("Title: %s%n", parsed.get("title").getAsString());
-                    var links = parsed.getAsJsonArray("links");
+                    JsonNode parsed = om.readTree(line);
+                    System.out.printf("Title: %s%n", parsed.get("title").asText());
+                    var links = parsed.get("links");
                     System.out.printf("Links (%d):%n", links.size());
                     for (var l : links) {
-                        var o = l.getAsJsonObject();
-                        System.out.printf("  %s → %s%n", o.get("text").getAsString(), o.get("href").getAsString());
+                        System.out.printf("  %s → %s%n", l.get("text").asText(), l.get("href").asText());
                     }
                     break;
                 }
@@ -143,6 +146,7 @@ public class Main {
             System.out.printf("%nVM %s deleted. Done.%n", vmId);
         } catch (Exception e) {
             System.err.println("Fatal: " + e.getMessage());
+            e.printStackTrace();
             System.exit(1);
         }
     }

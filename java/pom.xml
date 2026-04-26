@@ -10,8 +10,11 @@
         <maven.compiler.target>21</maven.compiler.target>
     </properties>
     <dependencies>
-        <dependency><groupId>com.vers</groupId><artifactId>vers-sdk</artifactId><version>0.1.7</version></dependency>
-        <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId><version>2.11.0</version></dependency>
+        <dependency>
+            <groupId>com.vers</groupId>
+            <artifactId>vers-sdk</artifactId>
+            <version>0.1.7</version>
+        </dependency>
     </dependencies>
     <build><plugins><plugin>
         <groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId><version>3.5.0</version>

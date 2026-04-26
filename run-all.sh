@@ -28,6 +28,15 @@ if ! command -v vers &>/dev/null; then
     exit 1
 fi
 
+# Prefer JDK 21 for Java/Kotlin (Kotlin compiler doesn't support JDK 25+)
+if [ -d "/opt/homebrew/Cellar/openjdk@21" ]; then
+    JDK21=$(find /opt/homebrew/Cellar/openjdk@21 -name "Home" -type d | head -1)
+    if [ -n "$JDK21" ]; then
+        export JAVA_HOME="$JDK21"
+        export PATH="$JAVA_HOME/bin:$PATH"
+    fi
+fi
+
 ALL_LANGS=(typescript python rust go java kotlin ruby php csharp)
 LANGS=("${@:-${ALL_LANGS[@]}}")
 
