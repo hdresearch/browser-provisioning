@@ -1,3 +1,1 @@
 vers-sdk>=0.1.7
-pychrome>=0.2.4
-paramiko>=3.5.0

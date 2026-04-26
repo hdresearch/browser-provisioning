@@ -1,144 +1,149 @@
 #!/usr/bin/env php
 <?php
-/**
- * browser-provisioning / PHP
- *
- * Uses: vers-sdk (composer), chrome-php/chrome (CDP), phpseclib (SSH)
- *
- * 1. Create root VM, install Chromium via SSH, commit
- * 2. Branch from commit, start Chrome, scrape via CDP
- *
- * VERS_API_KEY must be set.
- */
+// browser-provisioning / PHP — vers-sdk + vers CLI + puppeteer-core (inside VM)
+// VERS_API_KEY must be set. `vers` CLI must be on PATH.
 
 require_once __DIR__ . '/vendor/autoload.php';
-
 use VersSdk\VersSdkClient;
 use VersSdk\CreateNewRootVmParams;
-use HeadlessChromium\BrowserFactory;
-use phpseclib3\Net\SSH2;
-use phpseclib3\Crypt\PublicKeyLoader;
 
-// ── SSH helpers ──────────────────────────────────────────────────────
+$activeVms = [];
+$globalClient = null;
 
-function sshExec(string $vmId, int $port, string $privateKey, string $command): string
-{
-    $ssh = new SSH2("$vmId.vm.vers.sh", $port);
-    $key = PublicKeyLoader::load($privateKey);
-    if (!$ssh->login('root', $key)) {
-        throw new RuntimeException("SSH login failed for VM $vmId");
+function cleanupVms(): void {
+    global $activeVms, $globalClient;
+    if (empty($activeVms) || $globalClient === null) return;
+    foreach ($activeVms as $vm) {
+        fwrite(STDERR, "[cleanup] Deleting VM $vm...\n");
+        try { $globalClient->deleteVm($vm); } catch (\Throwable $e) { fwrite(STDERR, "[cleanup] Failed: {$e->getMessage()}\n"); }
     }
-    $output = $ssh->exec($command);
-    $ssh->disconnect();
-    return $output ?: '';
+    $activeVms = [];
+}
+register_shutdown_function('cleanupVms');
+if (function_exists('pcntl_signal')) {
+    pcntl_signal(SIGINT, function() { cleanupVms(); exit(1); });
+    pcntl_signal(SIGTERM, function() { cleanupVms(); exit(1); });
 }
 
-function waitSsh(VersSdkClient $client, string $vmId): array
-{
-    $resp = $client->sshKey($vmId);
-    $port = $resp['ssh_port'];
-    $key = $resp['ssh_private_key'];
-    for ($i = 0; $i < 40; $i++) {
-        try {
-            if (trim(sshExec($vmId, $port, $key, 'echo ready')) === 'ready') {
-                return ['port' => $port, 'key' => $key];
-            }
-        } catch (\Throwable $e) {}
-        if ($i % 5 === 0) echo "  Waiting for SSH... ($i/40)\n";
+function versExec(string $vmId, string $script, int $timeout = 600): string {
+    $proc = proc_open(
+        ['vers', 'exec', '-i', '-t', (string)$timeout, $vmId, 'bash'],
+        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pipes
+    );
+    fwrite($pipes[0], $script);
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($proc);
+    return $stdout;
+}
+
+function versWait(string $vmId, int $maxSec = 120): void {
+    $deadline = time() + $maxSec;
+    while (time() < $deadline) {
+        try { if (str_contains(versExec($vmId, 'echo ready', 10), 'ready')) return; } catch (\Throwable $e) {}
         sleep(3);
     }
-    throw new RuntimeException("VM $vmId not ready");
+    throw new \RuntimeException("VM $vmId not ready after {$maxSec}s");
 }
 
-// ── Main ─────────────────────────────────────────────────────────────
+$installScript = <<<'BASH'
+set -e
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq -o Dpkg::Options::="--force-confdef" \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+    libgbm1 libasound2t64 libpango-1.0-0 libcairo2 fonts-liberation \
+    xvfb nodejs npm curl ca-certificates
+apt-get remove -y chromium-browser 2>/dev/null || true
+mkdir -p /app && cd /app
+echo '{"dependencies":{"puppeteer-core":"^22.0.0"}}' > package.json
+npm install --quiet 2>&1
+npx puppeteer browsers install chrome 2>&1
+BASH;
+
+$scrapeScript = <<<'BASH'
+Xvfb :99 -screen 0 1280x800x24 &>/dev/null &
+sleep 1
+export DISPLAY=:99
+CHROME=$(find /root/.cache/puppeteer -name "chrome" -type f 2>/dev/null | head -1)
+$CHROME --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
+  --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 \
+  about:blank &>/dev/null &
+for i in $(seq 1 30); do curl -s http://127.0.0.1:9222/json/version > /dev/null 2>&1 && break; sleep 1; done
+
+cd /app && node -e '
+  const puppeteer = require("puppeteer-core");
+  (async () => {
+    const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
+    const page = await browser.newPage();
+    await page.goto("https://example.com", { waitUntil: "networkidle2", timeout: 30000 });
+    const title = await page.title();
+    const links = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("a[href]")).map(a => ({text: a.textContent.trim(), href: a.href}))
+    );
+    console.log(JSON.stringify({title, links}));
+    await browser.disconnect();
+  })();
+'
+BASH;
 
 $client = new VersSdkClient();
+$globalClient = $client;
 
-// Step 1: Build golden image
-echo "=== [PHP] Building golden image ===\n\n";
+try {
+    echo "=== [PHP] Building golden image ===\n\n";
 
-echo "[1/4] Creating root VM...\n";
-$root = $client->createNewRootVm(
-    body: [
-        'vm_config' => [
-            'vcpu_count' => 2, 'mem_size_mib' => 4096, 'fs_size_mib' => 8192,
-            'kernel_name' => 'default.bin', 'image_name' => 'default',
-        ],
-    ],
-    params: new CreateNewRootVmParams(waitBoot: true),
-);
-$buildVm = $root['vm_id'];
-echo "  VM: $buildVm\n";
+    echo "[1/4] Creating root VM...\n";
+    $root = $client->createNewRootVm(
+        body: ['vm_config' => ['vcpu_count' => 2, 'mem_size_mib' => 4096, 'fs_size_mib' => 8192,
+                                'kernel_name' => 'default.bin', 'image_name' => 'default']],
+        params: new CreateNewRootVmParams(waitBoot: true),
+    );
+    $buildVm = $root['vm_id'];
+    $activeVms[] = $buildVm;
+    echo "  VM: $buildVm\n";
 
-echo "[2/4] Waiting for SSH...\n";
-$ssh = waitSsh($client, $buildVm);
+    echo "[2/4] Waiting for VM...\n"; versWait($buildVm);
+    echo "[3/4] Installing Chromium...\n"; versExec($buildVm, $installScript);
 
-echo "[3/4] Installing Chromium...\n";
-sshExec($buildVm, $ssh['port'], $ssh['key'], <<<'BASH'
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq
-    apt-get install -y -qq -o Dpkg::Options::="--force-confdef" \
-        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-        libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-        libgbm1 libasound2t64 libpango-1.0-0 libcairo2 fonts-liberation \
-        xvfb nodejs npm curl ca-certificates
-    apt-get remove -y chromium-browser 2>/dev/null || true
-    mkdir -p /app && cd /app
-    echo '{"dependencies":{"puppeteer-core":"^22.0.0"}}' > package.json
-    npm install --quiet 2>&1
-    npx puppeteer browsers install chrome 2>&1
-BASH);
+    echo "[4/4] Committing...\n";
+    $commitResp = $client->commitVm($buildVm, body: []);
+    $commitId = $commitResp['commit_id'];
+    echo "  Commit: $commitId\n";
+    $client->deleteVm($buildVm);
+    $activeVms = array_values(array_diff($activeVms, [$buildVm]));
+    echo "  Build VM deleted\n\n";
 
-echo "[4/4] Committing...\n";
-$commitResp = $client->commitVm($buildVm, body: []);
-$commitId = $commitResp['commit_id'];
-echo "  Commit: $commitId\n";
-$client->deleteVm($buildVm);
-echo "  Build VM deleted\n\n";
+    echo "=== Branching from commit & scraping ===\n\n";
+    echo "[1/3] Branching...\n";
+    $branch = $client->branchByCommit($commitId, body: []);
+    $vmId = $branch['vms'][0]['vm_id'];
+    $activeVms[] = $vmId;
+    echo "  VM: $vmId\n";
 
-// Step 2: Branch + scrape
-echo "=== Branching from commit & scraping ===\n\n";
+    echo "[2/3] Waiting for VM...\n"; versWait($vmId);
+    echo "[3/3] Starting Chrome & scraping inside VM...\n\n";
+    $output = versExec($vmId, $scrapeScript, 120);
 
-echo "[1/3] Branching...\n";
-$branchResp = $client->branchByCommit($commitId, body: []);
-$vmId = $branchResp['vms'][0]['vm_id'];
-echo "  VM: $vmId\n";
+    foreach (explode("\n", trim($output)) as $line) {
+        if (str_starts_with($line, '{')) {
+            $data = json_decode($line, true);
+            echo "Title: {$data['title']}\n";
+            echo "Links (" . count($data['links']) . "):\n";
+            foreach ($data['links'] as $l) echo "  {$l['text']} → {$l['href']}\n";
+            break;
+        }
+    }
 
-echo "[2/3] Starting Chrome...\n";
-$ssh2 = waitSsh($client, $vmId);
-sshExec($vmId, $ssh2['port'], $ssh2['key'], <<<'BASH'
-    Xvfb :99 -screen 0 1280x800x24 &>/dev/null &
-    sleep 1
-    export DISPLAY=:99
-    CHROME=$(find /root/.cache/puppeteer -name "chrome" -type f 2>/dev/null | head -1)
-    $CHROME --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
-        --remote-debugging-port=9222 --remote-debugging-address=0.0.0.0 \
-        about:blank &>/dev/null &
-    for i in $(seq 1 30); do curl -s http://127.0.0.1:9222/json/version && break; sleep 1; done
-BASH);
+    $client->deleteVm($vmId);
+    $activeVms = array_values(array_diff($activeVms, [$vmId]));
+    echo "\nVM $vmId deleted. Done.\n";
 
-echo "[3/3] Connecting via chrome-php CDP...\n\n";
-$browserFactory = new BrowserFactory();
-$browser = $browserFactory->connectTo("http://$vmId.vm.vers.sh:9222");
-$page = $browser->createPage();
-
-$page->navigate('https://example.com')->waitForNavigation();
-
-$title = $page->evaluate('document.title')->getReturnValue();
-echo "Title: $title\n";
-
-$linksJson = $page->evaluate(
-    "JSON.stringify(Array.from(document.querySelectorAll('a[href]')).map(a=>({text:a.textContent.trim(),href:a.href})))"
-)->getReturnValue();
-$links = json_decode($linksJson, true);
-echo "Links (" . count($links) . "):\n";
-foreach ($links as $l) {
-    echo "  {$l['text']} → {$l['href']}\n";
+} catch (\Throwable $e) {
+    fwrite(STDERR, "Fatal: {$e->getMessage()}\n");
+    exit(1);
 }
-
-$browser->close();
-
-// Cleanup
-echo "\nDeleting VM $vmId...\n";
-$client->deleteVm($vmId);
-echo "Done.\n";

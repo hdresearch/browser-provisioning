@@ -1,81 +1,48 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
-
-# browser-provisioning / Ruby
-#
-# Uses: vers-sdk (gem), ferrum (CDP), net-ssh
-#
-# 1. Create root VM, install Chromium via SSH, commit
-# 2. Branch from commit, start Chrome, scrape via CDP
-#
-# VERS_API_KEY must be set.
+# browser-provisioning / Ruby — vers-sdk + vers CLI + puppeteer-core (inside VM)
+# VERS_API_KEY must be set. `vers` CLI must be on PATH.
 
 require "vers_sdk"
-require "ferrum"
-require "net/ssh"
 require "json"
-require "tempfile"
+require "open3"
 
-# ── SSH helpers ──────────────────────────────────────────────────────
+$active_vms = []
+$client = nil
 
-def ssh_exec(vm_id, port, private_key, command)
-  key_file = Tempfile.new(["vers-key", ".pem"])
-  key_file.write(private_key)
-  key_file.close
-  File.chmod(0o600, key_file.path)
-
-  output = ""
-  Net::SSH.start(
-    "#{vm_id}.vm.vers.sh", "root",
-    port: port, keys: [key_file.path],
-    verify_host_key: :never, timeout: 30
-  ) { |ssh| output = ssh.exec!(command) || "" }
-
-  key_file.unlink
-  output
+def cleanup_vms
+  return if $active_vms.empty? || $client.nil?
+  $active_vms.each do |vm|
+    $stderr.puts "[cleanup] Deleting VM #{vm}..."
+    $client.delete_vm(vm) rescue nil
+  end
+  $active_vms.clear
 end
 
-def wait_ssh(client, vm_id)
-  resp = client.ssh_key(vm_id)
-  port = resp["ssh_port"]
-  key = resp["ssh_private_key"]
+at_exit { cleanup_vms }
+trap("INT")  { cleanup_vms; exit 1 }
+trap("TERM") { cleanup_vms; exit 1 }
 
-  40.times do |i|
+def vers_exec(vm_id, script, timeout: 600)
+  out, err, st = Open3.capture3("vers", "exec", "-i", "-t", timeout.to_s, vm_id, "bash", stdin_data: script)
+  $stderr.puts "  [vers exec exit=#{st.exitstatus}] #{err[0..300]}" unless st.success?
+  out
+end
+
+def vers_wait(vm_id, max_sec: 120)
+  deadline = Time.now + max_sec
+  while Time.now < deadline
     begin
-      return [port, key] if ssh_exec(vm_id, port, key, "echo ready").strip == "ready"
+      return if vers_exec(vm_id, "echo ready", timeout: 10).include?("ready")
     rescue StandardError
     end
-    puts "  Waiting for SSH... (#{i}/40)" if (i % 5).zero?
     sleep 3
   end
-  raise "VM #{vm_id} not ready"
+  raise "VM #{vm_id} not ready after #{max_sec}s"
 end
 
-# ── Main ─────────────────────────────────────────────────────────────
-
-client = VersSdk::VersSdkClient.new
-
-# Step 1: Build golden image
-puts "=== [Ruby] Building golden image ===\n\n"
-
-puts "[1/4] Creating root VM..."
-root = client.create_new_root_vm(
-  body: {
-    "vm_config" => {
-      "vcpu_count" => 2, "mem_size_mib" => 4096, "fs_size_mib" => 8192,
-      "kernel_name" => "default.bin", "image_name" => "default"
-    }
-  },
-  params: { "wait_boot" => true }
-)
-build_vm = root["vm_id"]
-puts "  VM: #{build_vm}"
-
-puts "[2/4] Waiting for SSH..."
-port, key = wait_ssh(client, build_vm)
-
-puts "[3/4] Installing Chromium..."
-ssh_exec(build_vm, port, key, <<~BASH)
+INSTALL_SCRIPT = <<~'BASH'
+  set -e
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq -o Dpkg::Options::="--force-confdef" \
@@ -90,52 +57,83 @@ ssh_exec(build_vm, port, key, <<~BASH)
   npx puppeteer browsers install chrome 2>&1
 BASH
 
-puts "[4/4] Committing..."
-commit_resp = client.commit_vm(build_vm, body: {})
-commit_id = commit_resp["commit_id"]
-puts "  Commit: #{commit_id}"
-client.delete_vm(build_vm)
-puts "  Build VM deleted\n\n"
-
-# Step 2: Branch + scrape
-puts "=== Branching from commit & scraping ===\n\n"
-
-puts "[1/3] Branching..."
-branch = client.branch_by_commit(commit_id, body: {})
-vm_id = branch["vms"][0]["vm_id"]
-puts "  VM: #{vm_id}"
-
-puts "[2/3] Starting Chrome..."
-port2, key2 = wait_ssh(client, vm_id)
-ssh_exec(vm_id, port2, key2, <<~BASH)
+SCRAPE_SCRIPT = <<~'BASH'
   Xvfb :99 -screen 0 1280x800x24 &>/dev/null &
   sleep 1
   export DISPLAY=:99
   CHROME=$(find /root/.cache/puppeteer -name "chrome" -type f 2>/dev/null | head -1)
   $CHROME --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage \
-      --remote-debugging-port=9222 --remote-debugging-address=0.0.0.0 \
-      about:blank &>/dev/null &
-  for i in $(seq 1 30); do curl -s http://127.0.0.1:9222/json/version && break; sleep 1; done
+    --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 \
+    about:blank &>/dev/null &
+  for i in $(seq 1 30); do curl -s http://127.0.0.1:9222/json/version > /dev/null 2>&1 && break; sleep 1; done
+
+  cd /app && node -e '
+    const puppeteer = require("puppeteer-core");
+    (async () => {
+      const browser = await puppeteer.connect({ browserURL: "http://127.0.0.1:9222" });
+      const page = await browser.newPage();
+      await page.goto("https://example.com", { waitUntil: "networkidle2", timeout: 30000 });
+      const title = await page.title();
+      const links = await page.evaluate(() =>
+        Array.from(document.querySelectorAll("a[href]")).map(a => ({text: a.textContent.trim(), href: a.href}))
+      );
+      console.log(JSON.stringify({title, links}));
+      await browser.disconnect();
+    })();
+  '
 BASH
 
-puts "[3/3] Connecting via Ferrum CDP...\n\n"
-browser = Ferrum::Browser.new(url: "http://#{vm_id}.vm.vers.sh:9222")
-page = browser.create_page
-page.go_to("https://example.com")
+$client = VersSdk::VersSdkClient.new
 
-title = page.title
-puts "Title: #{title}"
+puts "=== [Ruby] Building golden image ===\n\n"
 
-links = page.evaluate(<<~JS)
-  Array.from(document.querySelectorAll('a[href]'))
-    .map(a => ({ text: a.textContent.trim(), href: a.href }))
-JS
-puts "Links (#{links.length}):"
-links.each { |l| puts "  #{l['text']} → #{l['href']}" }
+puts "[1/4] Creating root VM..."
+root = $client.create_new_root_vm(
+  body: {"vm_config" => {"vcpu_count" => 2, "mem_size_mib" => 4096, "fs_size_mib" => 8192,
+                          "kernel_name" => "default.bin", "image_name" => "default"}},
+  params: (p = VersSdk::CreateNewRootVmParams.new; p.wait_boot = true; p)
+)
+build_vm = root["vm_id"]
+$active_vms << build_vm
+puts "  VM: #{build_vm}"
 
-browser.quit
+puts "[2/4] Waiting for VM..."
+vers_wait(build_vm)
 
-# Cleanup
-puts "\nDeleting VM #{vm_id}..."
-client.delete_vm(vm_id)
-puts "Done."
+puts "[3/4] Installing Chromium..."
+vers_exec(build_vm, INSTALL_SCRIPT)
+
+puts "[4/4] Committing..."
+commit = $client.commit_vm(build_vm, body: {})
+commit_id = commit["commit_id"]
+puts "  Commit: #{commit_id}"
+$client.delete_vm(build_vm)
+$active_vms.delete(build_vm)
+puts "  Build VM deleted\n\n"
+
+puts "=== Branching from commit & scraping ===\n\n"
+
+puts "[1/3] Branching..."
+branch = $client.branch_by_commit(commit_id, body: {})
+vm_id = branch["vms"][0]["vm_id"]
+$active_vms << vm_id
+puts "  VM: #{vm_id}"
+
+puts "[2/3] Waiting for VM..."
+vers_wait(vm_id)
+
+puts "[3/3] Starting Chrome & scraping inside VM...\n\n"
+output = vers_exec(vm_id, SCRAPE_SCRIPT, timeout: 120)
+
+output.strip.split("\n").each do |line|
+  next unless line.start_with?("{")
+  data = JSON.parse(line)
+  puts "Title: #{data['title']}"
+  puts "Links (#{data['links'].length}):"
+  data["links"].each { |l| puts "  #{l['text']} → #{l['href']}" }
+  break
+end
+
+$client.delete_vm(vm_id)
+$active_vms.delete(vm_id)
+puts "\nVM #{vm_id} deleted. Done."
