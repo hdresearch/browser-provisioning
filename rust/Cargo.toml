@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vers-sdk = { git = "https://github.com/hdresearch/rust-sdk" }
+vers-sdk = "0.1.8"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 reqwest = "0.12"
