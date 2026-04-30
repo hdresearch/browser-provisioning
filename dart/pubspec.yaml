@@ -1,0 +1,8 @@
+name: browser_provisioning_dart
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+dependencies:
+  vers_sdk:
+    git:
+      url: https://github.com/hdresearch/dart-sdk.git
+      ref: main

@@ -30,3 +30,20 @@ php/composer.lock
 # Screenshots / temp
 *.png
 golden-commit-id.txt
+
+# Zig
+.zig-cache/
+zig-out/
+
+# Dart
+.dart_tool/
+pubspec.lock
+
+# Swift
+.build/
+.swiftpm/
+Package.resolved
+
+# Scala
+scala/target/
+scala/project/

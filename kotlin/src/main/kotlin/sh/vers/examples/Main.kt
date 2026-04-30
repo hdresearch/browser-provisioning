@@ -1,8 +1,8 @@
-package com.vers.examples
+package sh.vers.examples
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.vers.sdk.Models
-import com.vers.sdk.VersClient
+import sh.vers.sdk.Models
+import sh.vers.sdk.VersClient
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 

@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.vers.examples</groupId>
+    <groupId>sh.vers.examples</groupId>
     <artifactId>browser-provisioning</artifactId>
     <version>1.0.0</version>
     <properties>
@@ -11,13 +11,13 @@
     </properties>
     <dependencies>
         <dependency>
-            <groupId>com.vers</groupId>
+            <groupId>sh.vers</groupId>
             <artifactId>vers-sdk</artifactId>
             <version>0.1.8</version>
         </dependency>
     </dependencies>
     <build><plugins><plugin>
         <groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId><version>3.5.0</version>
-        <configuration><mainClass>com.vers.examples.Main</mainClass></configuration>
+        <configuration><mainClass>sh.vers.examples.Main</mainClass></configuration>
     </plugin></plugins></build>
 </project>

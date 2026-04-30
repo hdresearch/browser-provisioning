@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# run-all.sh — Run browser-provisioning examples for all 9 languages
+# run-all.sh — Run browser-provisioning examples for all 13 languages
 #              (or specific ones if given as arguments).
 #
 # Usage:
@@ -37,7 +37,7 @@ if [ -d "/opt/homebrew/Cellar/openjdk@21" ]; then
     fi
 fi
 
-ALL_LANGS=(typescript python rust go java kotlin ruby php csharp)
+ALL_LANGS=(typescript python rust go java kotlin ruby php csharp dart scala swift zig)
 LANGS=("${@:-${ALL_LANGS[@]}}")
 
 PASS=()
@@ -80,7 +80,7 @@ run_lang() {
     java)
         command -v mvn &>/dev/null || { skip "$lang" "mvn"; return 0; }
         cd "$SCRIPT_DIR/java"
-        mvn -q compile exec:java -Dexec.mainClass="com.vers.examples.Main" 2>&1
+        mvn -q compile exec:java -Dexec.mainClass="sh.vers.examples.Main" 2>&1
         ;;
     kotlin)
         command -v gradle &>/dev/null || { skip "$lang" "gradle"; return 0; }
@@ -103,6 +103,27 @@ run_lang() {
         command -v dotnet &>/dev/null || { skip "$lang" "dotnet"; return 0; }
         cd "$SCRIPT_DIR/csharp"
         dotnet run -c Release --nologo
+        ;;
+    dart)
+        command -v dart &>/dev/null || { skip "$lang" "dart"; return 0; }
+        cd "$SCRIPT_DIR/dart"
+        dart pub get 2>&1
+        dart run main.dart
+        ;;
+    scala)
+        command -v sbt &>/dev/null || { skip "$lang" "sbt"; return 0; }
+        cd "$SCRIPT_DIR/scala"
+        sbt -batch "runMain Main" 2>&1
+        ;;
+    swift)
+        command -v swift &>/dev/null || { skip "$lang" "swift"; return 0; }
+        cd "$SCRIPT_DIR/swift"
+        swift run 2>&1
+        ;;
+    zig)
+        command -v zig &>/dev/null || { skip "$lang" "zig"; return 0; }
+        cd "$SCRIPT_DIR/zig"
+        zig build run 2>&1
         ;;
     *)
         echo "Unknown language: $lang"
