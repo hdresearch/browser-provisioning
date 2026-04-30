@@ -9,7 +9,7 @@ late final VersSdkClient client;
 
 void cleanup() {
   for (final vm in activeVms.toList()) {
-    try { stderr.writeln('[cleanup] Deleting VM $vm...'); client.deleteVm(vm); } catch (_) {}
+    try { stderr.writeln('[cleanup] Deleting VM $vm...'); client.deleteVm(vm, null); } catch (_) {}
   }
 }
 
@@ -46,14 +46,14 @@ Future<void> main() async {
     versExec(buildVm, File('../install.sh').readAsStringSync());
 
     print('[4/4] Committing...');
-    final commitId = (await client.commitVm(buildVm, {}))['commit_id'] as String;
+    final commitId = (await client.commitVm(buildVm, {}, null, null))['commit_id'] as String;
     print('  Commit: $commitId');
-    await client.deleteVm(buildVm); activeVms.remove(buildVm);
+    await client.deleteVm(buildVm, null); activeVms.remove(buildVm);
     print('  Build VM deleted\n');
 
     print('=== Branching from commit & scraping ===\n');
     print('[1/3] Branching...');
-    final branch = await client.branchByCommit(commitId, {});
+    final branch = await client.branchByCommit(commitId, {}, null);
     final vmId = (branch['vms'] as List).first['vm_id'] as String;
     activeVms.add(vmId);
     print('  VM: $vmId');
@@ -71,7 +71,7 @@ Future<void> main() async {
       }
     }
 
-    await client.deleteVm(vmId); activeVms.remove(vmId);
+    await client.deleteVm(vmId, null); activeVms.remove(vmId);
     print('\nVM $vmId deleted. Done.');
   } catch (e) { stderr.writeln('Fatal: $e'); cleanup(); exit(1); }
   finally { client.close(); }
