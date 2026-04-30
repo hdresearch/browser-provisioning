@@ -4,7 +4,7 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use vers_sdk::{Client, NewRootRequest, VmCreateVmConfig, CreateNewRootVmParams};
+use vers_sdk::{Client, NewRootRequest, VmCreateVmConfig, VmCommitRequest, CreateNewRootVmParams};
 
 fn vers_exec(vm_id: &str, script: &str, timeout: u32) -> String {
     let mut child = Command::new("vers")
@@ -64,7 +64,7 @@ async fn main() {
         vers_exec(&build_vm, include_str!("../../install.sh"), 600);
 
         println!("[4/4] Committing...");
-        let cr = client.commit_vm(&build_vm, &serde_json::json!({}), None, None).await?;
+        let cr = client.commit_vm(&build_vm, &VmCommitRequest { commit_id: None, description: None, name: None }, None, None).await?;
         let commit_id = cr.commit_id.clone();
         println!("  Commit: {commit_id}");
         client.delete_vm(&build_vm, None, None).await?;

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "vers-sdk": "^0.1.7"
+    "vers-sdk": "^0.1.8"
   },
   "devDependencies": {
     "tsx": "^4.0.0",

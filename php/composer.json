@@ -3,17 +3,19 @@
     "type": "project",
     "require": {
         "php": "^8.2",
-        "vers/sdk": "0.1.8"
+        "vers/sdk": "dev-main"
     },
     "repositories": [
         {
-            "type": "path",
-            "url": "../../sterling/generated/php"
+            "type": "vcs",
+            "url": "https://github.com/hdresearch/php-sdk"
         }
     ],
     "autoload": {
         "classmap": [
             "vendor/vers/sdk/src/"
         ]
-    }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

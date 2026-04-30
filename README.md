@@ -1,6 +1,6 @@
 # Browser Provisioning Examples
 
-9 programs — one per Sterling-supported language — that demonstrate the Vers VM lifecycle with headless Chrome:
+13 programs — one per Sterling-supported language — that demonstrate the Vers VM lifecycle with headless Chrome:
 
 1. **Create** a root VM
 2. **Install** Chromium + puppeteer-core via `vers exec`
@@ -11,17 +11,21 @@
 
 ## Languages
 
-| Language   | SDK                    | Cleanup mechanism                                        |
-|------------|------------------------|----------------------------------------------------------|
-| TypeScript | vers-sdk (npm)         | `process.on("SIGINT"/"SIGTERM"/"unhandledRejection")`    |
-| Python     | vers-sdk (pip)         | `atexit.register()` + `signal.signal()`                  |
-| Rust       | vers-sdk (git)         | `Arc<Mutex>` tracker + panic hook + ctrl-c handler       |
-| Go         | go-sdk (module)        | `signal.Notify(SIGINT/SIGTERM)` + mutex-protected list   |
-| Java       | vers-sdk (mavenLocal)  | `Runtime.addShutdownHook()` + `ConcurrentHashMap`        |
-| Kotlin     | vers-sdk (mavenLocal)  | `Runtime.addShutdownHook()` + `ConcurrentHashMap`        |
-| Ruby       | vers-sdk (gem)         | `at_exit` + `trap("INT"/"TERM")`                         |
-| PHP        | vers-sdk (local path)  | `register_shutdown_function()` + `pcntl_signal()`        |
-| C#         | vers-sdk (NuGet)       | `ProcessExit` + `CancelKeyPress`                         |
+| Language   | SDK                          | Registry / Install                                       |
+|------------|------------------------------|----------------------------------------------------------|
+| TypeScript | `vers-sdk`                   | [npm](https://www.npmjs.com/package/vers-sdk) `^0.1.8`  |
+| Python     | `vers-sdk`                   | [PyPI](https://pypi.org/project/vers-sdk/) `>=0.1.8`    |
+| Rust       | `vers-sdk`                   | [crates.io](https://crates.io/crates/vers-sdk) `0.1.8`  |
+| Go         | `github.com/hdresearch/go-sdk` | [Go proxy](https://pkg.go.dev/github.com/hdresearch/go-sdk) `v0.1.8` |
+| Java       | `sh.vers:vers-sdk`           | Maven Central `0.1.8`                                    |
+| Kotlin     | `sh.vers:vers-sdk`           | Maven Central `0.1.8`                                    |
+| Ruby       | `vers-sdk`                   | [RubyGems](https://rubygems.org/gems/vers-sdk) `~> 0.1.8` |
+| PHP        | `vers/sdk`                   | [Packagist](https://packagist.org/packages/vers/sdk) `dev-main` |
+| C#         | `vers-sdk`                   | [NuGet](https://www.nuget.org/packages/vers-sdk) `0.1.8` |
+| Dart       | `vers_sdk`                   | Git (`hdresearch/dart-sdk`)                              |
+| Scala      | `sh.vers:vers-sdk`           | Maven Central `0.1.8`                                    |
+| Swift      | `swift-sdk`                  | SwiftPM (`hdresearch/swift-sdk`)                         |
+| Zig        | `vers_sdk`                   | Zig package (`hdresearch/zig-sdk`)                       |
 
 ## Prerequisites
 
@@ -36,20 +40,15 @@ TypeScript: node, npm, npx (tsx)
 Python:     python3, pip
 Rust:       cargo, rustc
 Go:         go
-Java:       mvn (+ Java SDK installed to mavenLocal)
-Kotlin:     gradle (+ Java SDK in mavenLocal, JDK 21)
+Java:       mvn, java (JDK 21+)
+Kotlin:     gradle, java (JDK 21+)
 Ruby:       ruby, bundle
 PHP:        php, composer
-C#:         dotnet (10+)
-```
-
-### One-time setup for Java/Kotlin
-
-The Java SDK isn't published to Maven Central yet. Install it locally:
-
-```bash
-cd ~/hdr/sterling/generated/java
-mvn install -DskipTests -Dmaven.test.skip=true
+C#:         dotnet (8+)
+Dart:       dart
+Scala:      sbt, java (JDK 21+)
+Swift:      swift (5.9+)
+Zig:        zig (0.15+)
 ```
 
 ## Usage
@@ -63,12 +62,12 @@ VERS_API_KEY=... ./run-all.sh
 Run specific languages:
 
 ```bash
-VERS_API_KEY=... ./run-all.sh typescript python go
+VERS_API_KEY=... ./run-all.sh typescript python go dart
 ```
 
 ## Architecture
 
-All 9 programs follow the same pattern:
+All 13 programs follow the same pattern:
 
 ```
 SDK: createNewRootVm() → vers exec: install.sh → SDK: commitVm() → SDK: deleteVm()
@@ -80,21 +79,3 @@ SDK: branchByCommit() → vers exec: scrape.sh → parse JSON → SDK: deleteVm(
 - **In-VM commands**: `vers exec -i -t <timeout> <vm_id> bash` pipes scripts into the VM
 - **Scraping**: Chrome runs on `localhost:9222` inside the VM; puppeteer-core connects locally
 - **No external network exposure** needed — everything runs inside the VM over `vers exec`
-
-## Test Results
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Total time: 1062s
-  Passed: 9  Failed: 0  Skipped: 0  (of 9)
-    ✓ typescript  (88s)
-    ✓ python      (113s)
-    ✓ rust        (128s)
-    ✓ go          (117s)
-    ✓ java        (136s)
-    ✓ kotlin      (104s)
-    ✓ ruby        (132s)
-    ✓ php         (155s)
-    ✓ csharp      (89s)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
